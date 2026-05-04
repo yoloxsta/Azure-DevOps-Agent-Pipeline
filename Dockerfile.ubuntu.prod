@@ -1,0 +1,61 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV AZP_URL=""
+ENV AZP_TOKEN=""
+ENV AZP_POOL=""
+ENV AZP_AGENT_NAME=""
+
+# ================================
+# Base dependencies
+# ================================R
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl jq git git-lfs unzip wget \
+    apt-transport-https lsb-release gnupg software-properties-common sudo \
+    iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
+
+# ================================
+# Azure CLI + kubectl (AKS support)
+# ================================
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+RUN az aks install-cli
+
+# ================================
+# Node.js (optional build tooling)
+# ================================
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# ================================
+# Create non-root user
+# ================================
+RUN useradd -m -s /bin/bash azureuser \
+    && echo "azureuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# ================================
+# Agent setup
+# ================================
+WORKDIR /home/azureuser/agent
+
+RUN curl -L -o agent.tar.gz \
+    "https://download.agent.dev.azure.com/agent/4.273.0/vsts-agent-linux-x64-4.273.0.tar.gz" \
+    && tar xzf agent.tar.gz \
+    && rm agent.tar.gz
+
+# Fix ownership
+RUN chown -R azureuser:azureuser /home/azureuser
+
+# ================================
+# Start script
+# ================================
+USER azureuser
+COPY start.sh ./
+
+USER root
+RUN chmod +x start.sh
+
+USER azureuser
+
+ENTRYPOINT ["./start.sh"]

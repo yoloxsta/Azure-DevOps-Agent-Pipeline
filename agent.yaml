@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azdevops-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azdevops-agent
+  template:
+    metadata:
+      labels:
+        app: azdevops-agent
+    spec:
+      containers:
+      - name: agent
+        image: your image
+        env:
+        - name: AZP_URL
+          value: "somethings"
+        - name: AZP_POOL
+          value: "azureagent"
+        - name: AZP_AGENT_NAME
+          value: "aks-agent"
+
+        # ⚠️ plain text PAT (lab only)
+        - name: AZP_TOKEN
+          value: "somethings"

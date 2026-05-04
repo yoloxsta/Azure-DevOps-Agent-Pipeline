@@ -1,0 +1,67 @@
+FROM rockylinux:8
+
+ENV AZP_URL=""
+ENV AZP_TOKEN=""
+ENV AZP_POOL=""
+ENV AZP_AGENT_NAME=""
+
+# ================================
+# Base dependencies
+# ================================
+RUN dnf install -y \
+    ca-certificates curl jq git git-lfs unzip wget \
+    sudo tar gzip \
+    iputils \
+    shadow-utils \
+    && dnf clean all
+
+# ================================
+# Azure CLI
+# ================================
+RUN rpm --import https://packages.microsoft.com/keys/microsoft.asc \
+    && dnf install -y https://packages.microsoft.com/config/rhel/8/packages-microsoft-prod.rpm \
+    && dnf install -y azure-cli \
+    && dnf clean all
+
+# ================================
+# kubectl
+# ================================
+RUN az aks install-cli
+
+# ================================
+# Node.js (optional)
+# ================================
+RUN dnf module enable nodejs:18 -y \
+    && dnf install -y nodejs \
+    && dnf clean all
+
+# ================================
+# Create user
+# ================================
+RUN useradd -m azureuser \
+    && echo "azureuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# ================================
+# Agent setup
+# ================================
+WORKDIR /home/azureuser/agent
+
+RUN curl -L -o agent.tar.gz \
+    "https://download.agent.dev.azure.com/agent/4.273.0/vsts-agent-linux-x64-4.273.0.tar.gz" \
+    && tar xzf agent.tar.gz \
+    && rm agent.tar.gz
+
+RUN chown -R azureuser:azureuser /home/azureuser
+
+# ================================
+# Start script
+# ================================
+USER azureuser
+COPY start.sh ./
+
+USER root
+RUN chmod +x start.sh
+
+USER azureuser
+
+ENTRYPOINT ["./start.sh"]

@@ -1,0 +1,64 @@
+FROM alpine:3.19
+
+ENV AZP_URL=""
+ENV AZP_TOKEN=""
+ENV AZP_POOL=""
+ENV AZP_AGENT_NAME=""
+
+# ================================
+# Base dependencies
+# ================================
+RUN apk add --no-cache \
+    bash curl git jq tar gzip unzip \
+    ca-certificates sudo shadow icu-libs \
+    nodejs npm
+
+# ================================
+# Install glibc (IMPORTANT FIX)
+# ================================
+RUN wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub \
+    && wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.35-r1/glibc-2.35-r1.apk \
+    && apk add glibc-2.35-r1.apk \
+    && rm glibc-2.35-r1.apk
+
+# ================================
+# Azure CLI (pip method)
+# ================================
+RUN apk add --no-cache python3 py3-pip \
+    && pip install --no-cache-dir --break-system-packages azure-cli
+
+# kubectl
+RUN curl -LO "https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl" \
+    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
+    && rm kubectl
+
+# ================================
+# Create user
+# ================================
+RUN adduser -D azureuser \
+    && echo "azureuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# ================================
+# Agent setup
+# ================================
+WORKDIR /home/azureuser/agent
+
+RUN curl -L -o agent.tar.gz \
+    "https://download.agent.dev.azure.com/agent/4.273.0/vsts-agent-linux-x64-4.273.0.tar.gz" \
+    && tar xzf agent.tar.gz \
+    && rm agent.tar.gz
+
+RUN chown -R azureuser:azureuser /home/azureuser
+
+# ================================
+# Start script
+# ================================
+USER azureuser
+COPY start.sh ./
+
+USER root
+RUN chmod +x start.sh
+
+USER azureuser
+
+ENTRYPOINT ["./start.sh"]
