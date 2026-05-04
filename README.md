@@ -1,167 +1,220 @@
-## Guide
+# Azure DevOps Self-Hosted Agent
 
+A Docker-based self-hosted agent for Azure DevOps pipelines.
+
+## Quick Start
+
+```bash
+docker run -d \
+  --name ado-agent-2 \
+  --restart always \
+  -e AZP_URL="Your Org Url" \
+  -e AZP_TOKEN="Your Token" \
+  -e AZP_POOL="azureagent" \
+  -e AZP_AGENT_NAME="vm-agent-docker-04" \
+  -e AZP_AGENT_DOWNGRADE_DISABLED=true \
+  ado-agent
 ```
-docker run -d --name ado-agent-2 --restart always -e AZP_URL="Your Org Url" -e AZP_TOKEN="Your Token" -e AZP_POOL="azureagent" -e AZP_AGENT_NAME="vm-agent-docker-04" -e AZP_AGENT_DOWNGRADE_DISABLED=true ado-agent
-```
-###
 
-```
-PART 1 — Dockerfile (build-time)
+## Architecture Overview
 
- The Dockerfile defines how your agent image is built
+| Concept | Analogy |
+|---------|---------|
+| Dockerfile | Recipe |
+| Image | Cooked meal |
+| Container | Someone eating the meal |
 
-Think:
+---
 
-Dockerfile = recipe
-Image = cooked meal
-Container = someone eating the meal
-🔹 Step 1 — Base image
+## Part 1 — Dockerfile (Build-Time)
+
+The Dockerfile defines how your agent image is built.
+
+### Step 1 — Base Image
+
+```dockerfile
 FROM ubuntu:22.04
+```
 
- Start from a clean Linux OS
+Start from a clean Linux OS.
 
-🔹 Step 2 — Environment variables
+### Step 2 — Environment Variables
+
+```dockerfile
 ENV AZP_URL=""
 ENV AZP_TOKEN=""
 ENV AZP_POOL=""
 ENV AZP_AGENT_NAME=""
+```
 
- These are placeholders
+These are placeholders that will be filled at runtime (in AKS), not during build.
 
-They will be filled later at runtime (in AKS)
-NOT during build
+### Step 3 — Install Base Tools
 
-🔹 Step 3 — Install base tools
+```dockerfile
 apt-get install ...
+```
 
-You install:
+Installs essential tools your pipeline might use:
 
-git → clone repos
-curl → download stuff
-jq → parse JSON
-sudo → permissions
-ping → debug network
+| Tool | Purpose |
+|------|---------|
+| `git` | Clone repositories |
+| `curl` | Download files |
+| `jq` | Parse JSON |
+| `sudo` | Permission management |
+| `ping` | Network debugging |
 
- These are tools your pipeline might use
+### Step 4 — Install Azure CLI + kubectl
 
-🔹 Step 4 — Install Azure CLI + kubectl
+```dockerfile
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 RUN az aks install-cli
+```
 
- This gives your agent power to:
+Enables the agent to:
+- Run `az` commands
+- Deploy to AKS
+- Run `az acr build`
 
-run az commands
-deploy to AKS
-run az acr build
-🔹 Step 5 — Install Node.js
+### Step 5 — Install Node.js
+
+```dockerfile
 apt-get install -y nodejs
+```
 
- Needed because:
+Required because:
+- Many Azure DevOps tasks use Node internally
+- Frontend builds may require it
 
-many Azure DevOps tasks use Node internally
-frontend builds may require it
-🔹 Step 6 — Create user (VERY IMPORTANT)
+### Step 6 — Create User (IMPORTANT)
+
+```dockerfile
 useradd -m -s /bin/bash azureuser
+```
 
- Instead of running as root, you create:
+Creates a safe non-root user to run the agent.
 
-safe user = azureuser
-🔹 Step 7 — Agent installation
+### Step 7 — Agent Installation
+
+```dockerfile
 WORKDIR /home/azureuser/agent
-
- This is the working directory
 
 curl ... vsts-agent-linux-x64-4.273.0.tar.gz
 tar xzf agent.tar.gz
-
- You download and extract:
-
- Azure DevOps agent software
-
-This gives you:
-
-config.sh  → configure agent
-run.sh     → run agent
-🔹 Step 8 — Fix permissions (CRITICAL)
-RUN chown -R azureuser:azureuser /home/azureuser
-
- Why?
-
-Because:
-
-files were created by root
-but agent runs as azureuser
-
-Without this:
-
- permission denied errors
-🔹 Step 9 — Copy startup script
-COPY start.sh ./
-
- This puts your script inside the image
-
-🔹 Step 10 — Make script executable
-RUN chmod +x start.sh
-🔹 Step 11 — Switch user
-USER azureuser
-
- From now on:
-
-everything runs as non-root user
-🔹 Step 12 — Container entrypoint
-ENTRYPOINT ["./start.sh"]
-
- When container starts:
-
-start.sh runs automatically
--> PART 2 — start.sh (runtime)
-
- This is what happens when container starts in AKS
-
-🔹 Step 1 — Fail fast
-set -e
-
- If any command fails → stop immediately
-
-🔹 Step 2 — Print info
-echo "Azure DevOps Agent Startup"
-
-Just logs
-
-🔹 Step 3 — Validate required inputs
-if [ -z "$AZP_URL" ]; then error
-
- These must be provided by Kubernetes:
-
-Variable	Meaning
-AZP_URL	your Azure DevOps org
-AZP_TOKEN	PAT token
-AZP_POOL	agent pool
-🔹 Step 4 — Set agent name
-AZP_AGENT_NAME=$(hostname)
-
- Each pod gets unique name
-
-🔹 Step 5 — Check if already configured
-if [ -f .agent ]
-
- .agent file means:
-
-Agent already registered before
-🔹 Step 6 — Configure agent (only once)
-./config.sh --unattended ...
-
-This connects your container to Azure DevOps.
-
-It does:
-registers agent
-assigns to pool
-authenticates with PAT
-🔹 Step 7 — Start agent
-exec ./run.sh
-
- Now the agent:
-
-connects to Azure DevOps
-waits for jobs
 ```
+
+Downloads and extracts the Azure DevOps agent software, which provides:
+- `config.sh` — Configure agent
+- `run.sh` — Run agent
+
+### Step 8 — Fix Permissions (CRITICAL)
+
+```dockerfile
+RUN chown -R azureuser:azureuser /home/azureuser
+```
+
+**Why?** Files were created by root, but the agent runs as `azureuser`. Without this, you'll get permission denied errors.
+
+### Step 9 — Copy Startup Script
+
+```dockerfile
+COPY start.sh ./
+```
+
+Copies the startup script into the image.
+
+### Step 10 — Make Script Executable
+
+```dockerfile
+RUN chmod +x start.sh
+```
+
+### Step 11 — Switch User
+
+```dockerfile
+USER azureuser
+```
+
+Everything from now on runs as non-root user.
+
+### Step 12 — Container Entrypoint
+
+```dockerfile
+ENTRYPOINT ["./start.sh"]
+```
+
+When the container starts, `start.sh` runs automatically.
+
+---
+
+## Part 2 — start.sh (Runtime)
+
+This is what happens when the container starts in AKS.
+
+### Step 1 — Fail Fast
+
+```bash
+set -e
+```
+
+If any command fails, stop immediately.
+
+### Step 2 — Print Info
+
+```bash
+echo "Azure DevOps Agent Startup"
+```
+
+Logs startup message.
+
+### Step 3 — Validate Required Inputs
+
+```bash
+if [ -z "$AZP_URL" ]; then error
+```
+
+These must be provided by Kubernetes:
+
+| Variable | Meaning |
+|----------|---------|
+| `AZP_URL` | Your Azure DevOps organization |
+| `AZP_TOKEN` | PAT token |
+| `AZP_POOL` | Agent pool |
+
+### Step 4 — Set Agent Name
+
+```bash
+AZP_AGENT_NAME=$(hostname)
+```
+
+Each pod gets a unique name.
+
+### Step 5 — Check if Already Configured
+
+```bash
+if [ -f .agent ]
+```
+
+The `.agent` file indicates the agent was already registered.
+
+### Step 6 — Configure Agent (Only Once)
+
+```bash
+./config.sh --unattended ...
+```
+
+Connects the container to Azure DevOps:
+- Registers the agent
+- Assigns to pool
+- Authenticates with PAT
+
+### Step 7 — Start Agent
+
+```bash
+exec ./run.sh
+```
+
+The agent now:
+- Connects to Azure DevOps
+- Waits for jobs
