@@ -1,0 +1,39 @@
+FROM alpine:3.19
+ENV AZP_URL=""
+ENV AZP_TOKEN=""
+ENV AZP_POOL=""
+ENV AZP_AGENT_NAME=""
+
+RUN apk add --no-cache \
+    bash curl git jq tar gzip unzip \
+    ca-certificates sudo shadow icu-libs \
+    nodejs npm \
+    gcompat libc6-compat
+
+# Azure CLI
+RUN apk add --no-cache python3 py3-pip \
+    && pip install --no-cache-dir --break-system-packages azure-cli
+
+# kubectl
+RUN curl -LO "https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl" \
+    && install -m 0755 kubectl /usr/local/bin/kubectl \
+    && rm kubectl
+
+# user
+RUN adduser -D azureuser \
+    && echo "azureuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# agent
+WORKDIR /home/azureuser/agent
+RUN curl -L -o agent.tar.gz \
+    "https://download.agent.dev.azure.com/agent/4.273.0/vsts-agent-linux-x64-4.273.0.tar.gz" \
+    && tar xzf agent.tar.gz \
+    && rm agent.tar.gz
+
+RUN chown -R azureuser:azureuser /home/azureuser
+
+USER azureuser
+COPY --chown=azureuser:azureuser start.sh ./start.sh
+RUN chmod +x start.sh
+
+ENTRYPOINT ["./start.sh"]
