@@ -1,0 +1,35 @@
+
+trigger:
+- main
+
+pool:
+  name: azureagent   # your VM agent
+  demands:
+    - Agent.Name -equals ***
+
+variables:
+  ACR_NAME: ***
+  IMAGE_NAME: ***
+  RG_NAME: ***
+  AKS_NAME: ***
+  CLIENT_ID: ***
+
+steps:
+
+# ---------------- Checkout ----------------
+- checkout: self
+
+# ---------------- CI: Build & Push ----------------
+- script: |
+    echo "Login using Managed Identity"
+    az login --identity --client-id $CLIENT_ID
+
+    echo "Login to ACR"
+    az acr login --name $ACR_NAME
+
+    echo "Build Docker image"
+    docker build -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$(Build.BuildId) .
+
+    echo "Push Docker image"
+    docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$(Build.BuildId)
+  displayName: Build and Push
