@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-aks
+  labels:
+    app: hello-aks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-aks
+  template:
+    metadata:
+      labels:
+        app: hello-aks
+    spec:
+      containers:
+      - name: hello-aks
+        image: myacrlab12345.azurecr.io/hello-aks:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-aks-service
+spec:
+  type: ClusterIP   # internal only (no public IP)
+  selector:
+    app: hello-aks
+  ports:
+    - port: 80
+      targetPort: 3000

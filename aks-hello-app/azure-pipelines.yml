@@ -1,0 +1,24 @@
+trigger:
+- dev
+- uat
+- main
+
+pool:
+  name: azureagent
+  demands:
+    - Agent.Name -equals vm-agent-docker-05
+
+# 👇 route based on branch
+stages:
+
+# -------- DEV --------
+- ${{ if eq(variables['Build.SourceBranchName'], 'dev') }}:
+  - template: cicd/dev.yml
+
+# -------- UAT --------
+- ${{ if eq(variables['Build.SourceBranchName'], 'uat') }}:
+  - template: cicd/uat.yml
+
+# -------- PROD --------
+- ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+  - template: cicd/prod.yml

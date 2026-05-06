@@ -1,0 +1,68 @@
+stages:
+
+# ================= CI =================
+- stage: Dev
+  displayName: DEV Build & Push
+
+  variables:
+  - group: dev-config
+  - name: TAG
+    value: dev-$(Build.BuildId)
+
+  jobs:
+  - job: BuildPush
+    displayName: Build & Push Image
+    steps:
+
+    - checkout: self
+
+    - script: |
+        echo "Login using Managed Identity"
+        az login --identity --client-id $CLIENT_ID
+
+        echo "Login to ACR"
+        az acr login --name $ACR_NAME
+
+        echo "Build image"
+        docker build -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$(TAG) .
+
+        echo "Push image"
+        docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$(TAG)
+      displayName: Build & Push DEV
+
+
+# ================= CD =================
+- stage: DevDeploy
+  displayName: DEV Deploy to AKS
+  dependsOn: Dev
+  condition: succeeded()
+
+  variables:
+  - group: dev-config
+  - name: TAG
+    value: dev-$(Build.BuildId)
+
+  jobs:
+  - job: Deploy
+    displayName: Deploy to AKS
+    steps:
+
+    - checkout: self
+
+    - script: |
+        echo "Login using Managed Identity"
+        az login --identity --client-id $CLIENT_ID
+
+        echo "Get AKS credentials"
+        az aks get-credentials -g $RG_NAME -n $AKS_NAME --overwrite-existing
+
+        echo "Deploy manifests"
+        kubectl apply -f k8s/dev/
+
+        echo "Update image"
+        kubectl set image deployment/hello-aks \
+          hello-aks=$ACR_NAME.azurecr.io/$IMAGE_NAME:$(TAG)
+
+        echo "Verify rollout"
+        kubectl rollout status deployment/hello-aks
+      displayName: Deploy DEV to AKS

@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-aks
+  labels:
+    app: hello-aks
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: hello-aks
+
+  template:
+    metadata:
+      labels:
+        app: hello-aks
+
+    spec:
+      containers:
+      - name: hello-aks
+
+        # 👇 CI/CD will replace this tag
+        image: ***.azurecr.io/hello-aks:latest
+
+        imagePullPolicy: Always
+
+        ports:
+        - containerPort: 3000
+
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-aks-service
+
+spec:
+  type: ClusterIP
+
+  selector:
+    app: hello-aks
+
+  ports:
+    - port: 80
+      targetPort: 3000

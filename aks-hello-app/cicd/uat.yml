@@ -1,0 +1,27 @@
+stages:
+- stage: Uat
+  displayName: UAT Build & Push
+
+  variables:
+  - group: uat-config
+  - name: TAG
+    value: uat-$(Build.BuildId)
+
+  jobs:
+  - job: BuildPush
+    steps:
+    - checkout: self
+
+    - script: |
+        echo "Login using Managed Identity"
+        az login --identity --client-id $CLIENT_ID
+
+        echo "Login to ACR"
+        az acr login --name $ACR_NAME
+
+        echo "Build image"
+        docker build -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$TAG .
+
+        echo "Push image"
+        docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$TAG
+      displayName: Build & Push UAT
